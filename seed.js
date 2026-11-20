@@ -9,7 +9,15 @@ const data = [
         movies: [
             { title: 'Inception', desc: 'A thief who steals secrets through dreams', releaseYear: 2010, genre: 'Sci-Fi' },
             { title: 'Interstellar', desc: 'Explorers travel through a wormhole in space', releaseYear: 2014, genre: 'Sci-Fi' },
-            { title: 'The Dark Knight', desc: 'Batman faces the Joker in Gotham', releaseYear: 2008, genre: 'Action' }
+            { title: 'The Dark Knight', desc: 'Batman faces the Joker in Gotham', releaseYear: 2008, genre: 'Action' },
+            { title: 'Tenet', desc: 'A secret agent manipulates the flow of time', releaseYear: 2020, genre: 'Sci-Fi' }
+        ]
+    },
+    {
+        director: { fullName: 'Taika Waititi', birthYear: 1975, country: 'New Zealand' },
+        movies: [
+            { title: 'Jojo Rabbit', desc: 'A boy in Nazi Germany has Hitler as an imaginary friend', releaseYear: 2019, genre: 'Comedy' },
+            { title: 'What We Do in the Shadows', desc: 'Vampire flatmates try to cope with modern life', releaseYear: 2014, genre: 'Comedy' }
         ]
     },
     {

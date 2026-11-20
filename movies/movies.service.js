@@ -1,31 +1,40 @@
 const moviesModel = require("./movies.model")
 const directorsModel = require("../directors/directors.model")
 
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 exports.getAllMovies = async (req, res) => {
+    const query = req.validated
     const filter = {}
 
-    if(req.query.title){
-        filter['title'] = {$regex: req.query.title, $options: 'i'}
+    if(query.title){
+        filter['title'] = {$regex: escapeRegex(query.title), $options: 'i'}
     }
 
-    if(req.query.genre){
-        filter['genre'] = {$regex: req.query.genre, $options: 'i'}
+    // ?genre=comedy -> only "Comedy" movies (exact match, any letter case)
+    if(query.genre){
+        filter['genre'] = {$regex: `^${escapeRegex(query.genre)}$`, $options: 'i'}
     }
 
-    if(req.query.yearFrom){
-        filter['releaseYear'] = {...filter.releaseYear, '$gte': req.query.yearFrom}
+    // ?year=2020 -> only movies released in 2020
+    if(query.year !== undefined){
+        filter['releaseYear'] = query.year
+    } else {
+        if(query.yearFrom !== undefined){
+            filter['releaseYear'] = {...filter.releaseYear, '$gte': query.yearFrom}
+        }
+
+        if(query.yearTo !== undefined){
+            filter['releaseYear'] = {...filter.releaseYear, '$lte': query.yearTo}
+        }
     }
 
-    if(req.query.yearTo){
-        filter['releaseYear'] = {...filter.releaseYear, '$lte': req.query.yearTo}
+    if(query.director){
+        filter['director'] = query.director
     }
 
-    if(req.query.director){
-        filter['director'] = req.query.director
-    }
-
-    const page = Math.max(parseInt(req.query.page) || 1, 1)
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 30)
+    const page = query.page ?? 1
+    const limit = query.limit ?? 10
     const skip = (page - 1) * limit
 
     const [movies, total] = await Promise.all([
