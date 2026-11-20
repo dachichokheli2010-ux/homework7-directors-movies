@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directors & Movies</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: system-ui, sans-serif; background: #f4f5f7; color: #1d2330; }
+        header { background: #1d2330; color: #fff; padding: 16px 24px; }
+        header h1 { margin: 0; font-size: 20px; }
+        header p { margin: 4px 0 0; font-size: 13px; color: #b7bfcc; }
+        main { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        section { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        h2 { margin: 0 0 12px; font-size: 17px; }
+        form { display: grid; gap: 8px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #e6e8ec; }
+        input, select, textarea { font: inherit; padding: 8px; border: 1px solid #ccd1d9; border-radius: 6px; width: 100%; }
+        button { font: inherit; padding: 8px 12px; border: 0; border-radius: 6px; cursor: pointer; background: #2f6fed; color: #fff; }
+        button.secondary { background: #e6e8ec; color: #1d2330; }
+        button.danger { background: #d93a3a; }
+        .row { display: flex; gap: 8px; }
+        .card { border: 1px solid #e6e8ec; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+        .card h3 { margin: 0; font-size: 15px; }
+        .meta { font-size: 13px; color: #5d6675; margin: 4px 0 8px; }
+        .tag { display: inline-block; background: #eef3fe; color: #2f6fed; border-radius: 4px; padding: 2px 6px; font-size: 12px; margin: 2px 4px 2px 0; }
+        .actions { display: flex; gap: 6px; margin-top: 8px; }
+        .actions button { padding: 4px 10px; font-size: 13px; }
+        .hint { font-size: 12px; color: #5d6675; margin: -4px 0 0; }
+        #log { grid-column: 1 / -1; }
+        pre { background: #1d2330; color: #d6f5d6; padding: 12px; border-radius: 8px; overflow: auto; max-height: 300px; font-size: 12px; margin: 0; }
+        .error { color: #d93a3a; }
+        @media (max-width: 800px) { main { grid-template-columns: 1fr; padding: 16px; } }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Directors & Movies</h1>
+        <p>One to many: a director has many movies, a movie has 1 director (sent in the <code>director-id</code> header)</p>
+    </header>
+
+    <main>
+        <section>
+            <h2>Directors</h2>
+            <form id="director-form">
+                <input name="fullName" placeholder="Full name" required>
+                <div class="row">
+                    <input name="birthYear" type="number" placeholder="Birth year">
+                    <input name="country" placeholder="Country">
+                </div>
+                <div class="row">
+                    <button type="submit">Save director</button>
+                    <button type="button" class="secondary" id="director-cancel" hidden>Cancel</button>
+                </div>
+            </form>
+            <div id="directors"></div>
+        </section>
+
+        <section>
+            <h2>Movies</h2>
+            <form id="movie-form">
+                <select name="director" required></select>
+                <p class="hint">Selected director id is sent as the <code>director-id</code> header</p>
+                <input name="title" placeholder="Title" required>
+                <textarea name="desc" placeholder="Description (min 5 chars)" rows="2" required></textarea>
+                <div class="row">
+                    <input name="releaseYear" type="number" placeholder="Release year">
+                    <input name="genre" placeholder="Genre">
+                </div>
+                <div class="row">
+                    <button type="submit">Save movie</button>
+                    <button type="button" class="secondary" id="movie-cancel" hidden>Cancel</button>
+                </div>
+            </form>
+            <div id="movies"></div>
+        </section>
+
+        <section id="log">
+            <h2>Last response</h2>
+            <pre id="output">-</pre>
+        </section>
+    </main>
+
+    <script>
+        const directorForm = document.getElementById('director-form')
+        const movieForm = document.getElementById('movie-form')
+        const output = document.getElementById('output')
+        let editingDirectorId = null
+        let editingMovieId = null
+
+        const escape = (value) => String(value ?? '').replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[c])
+
+        const api = async (method, url, body, headers = {}) => {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: body ? JSON.stringify(body) : undefined
+            })
+            const data = await res.json()
+            output.textContent = `${method} ${url} -> ${res.status}\n\n${JSON.stringify(data, null, 2)}`
+            output.className = res.ok ? '' : 'error'
+            return { ok: res.ok, data }
+        }
+
+        const formToBody = (form, fields) => {
+            const body = {}
+            for (const field of fields) {
+                const value = form[field].value.trim()
+                if (value === '') continue
+                body[field] = form[field].type === 'number' ? Number(value) : value
+            }
+            return body
+        }
+
+        const loadDirectors = async () => {
+            const res = await fetch('/directors?limit=30')
+            const { data } = await res.json()
+
+            document.getElementById('directors').innerHTML = data.length ? data.map(d => `
+                <div class="card">
+                    <h3>${escape(d.fullName)}</h3>
+                    <div class="meta">${escape(d.birthYear ?? '-')} · ${escape(d.country ?? '-')} · id: ${d._id}</div>
+                    <div>${d.movies.length ? d.movies.map(m => `<span class="tag">${escape(m.title)} (${escape(m.releaseYear ?? '-')})</span>`).join('') : '<span class="meta">No movies yet</span>'}</div>
+                    <div class="actions">
+                        <button class="secondary" onclick="editDirector(${escape(JSON.stringify(d))})">Edit</button>
+                        <button class="danger" onclick="deleteDirector('${d._id}')">Delete</button>
+                    </div>
+                </div>
+            `).join('') : '<p class="meta">No directors yet</p>'
+
+            movieForm.director.innerHTML = '<option value="">Choose director</option>' +
+                data.map(d => `<option value="${d._id}">${escape(d.fullName)}</option>`).join('')
+        }
+
+        const loadMovies = async () => {
+            const res = await fetch('/movies?limit=30')
+            const { data } = await res.json()
+
+            document.getElementById('movies').innerHTML = data.length ? data.map(m => `
+                <div class="card">
+                    <h3>${escape(m.title)}</h3>
+                    <div class="meta">${escape(m.releaseYear ?? '-')} · ${escape(m.genre ?? '-')} · id: ${m._id}</div>
+                    <div>${escape(m.desc)}</div>
+                    <div class="meta">Director: <b>${escape(m.director?.fullName ?? '-')}</b></div>
+                    <div class="actions">
+                        <button class="secondary" onclick="editMovie(${escape(JSON.stringify(m))})">Edit</button>
+                        <button class="danger" onclick="deleteMovie('${m._id}')">Delete</button>
+                    </div>
+                </div>
+            `).join('') : '<p class="meta">No movies yet</p>'
+        }
+
+        const reload = () => Promise.all([loadDirectors(), loadMovies()])
+
+        const resetDirectorForm = () => {
+            editingDirectorId = null
+            directorForm.reset()
+            document.getElementById('director-cancel').hidden = true
+        }
+
+        const resetMovieForm = () => {
+            editingMovieId = null
+            movieForm.reset()
+            movieForm.director.disabled = false
+            document.getElementById('movie-cancel').hidden = true
+        }
+
+        directorForm.addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const body = formToBody(directorForm, ['fullName', 'birthYear', 'country'])
+            const { ok } = editingDirectorId
+                ? await api('PUT', `/directors/${editingDirectorId}`, body)
+                : await api('POST', '/directors', body)
+            if (ok) { resetDirectorForm(); reload() }
+        })
+
+        movieForm.addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const body = formToBody(movieForm, ['title', 'desc', 'releaseYear', 'genre'])
+            const { ok } = editingMovieId
+                ? await api('PUT', `/movies/${editingMovieId}`, body)
+                : await api('POST', '/movies', body, { 'director-id': movieForm.director.value })
+            if (ok) { resetMovieForm(); reload() }
+        })
+
+        window.editDirector = (d) => {
+            editingDirectorId = d._id
+            directorForm.fullName.value = d.fullName ?? ''
+            directorForm.birthYear.value = d.birthYear ?? ''
+            directorForm.country.value = d.country ?? ''
+            document.getElementById('director-cancel').hidden = false
+            directorForm.scrollIntoView({ behavior: 'smooth' })
+        }
+
+        window.editMovie = (m) => {
+            editingMovieId = m._id
+            movieForm.director.value = m.director?._id ?? ''
+            movieForm.director.disabled = true
+            movieForm.title.value = m.title ?? ''
+            movieForm.desc.value = m.desc ?? ''
+            movieForm.releaseYear.value = m.releaseYear ?? ''
+            movieForm.genre.value = m.genre ?? ''
+            document.getElementById('movie-cancel').hidden = false
+            movieForm.scrollIntoView({ behavior: 'smooth' })
+        }
+
+        window.deleteDirector = async (id) => {
+            await api('DELETE', `/directors/${id}`)
+            reload()
+        }
+
+        window.deleteMovie = async (id) => {
+            await api('DELETE', `/movies/${id}`)
+            reload()
+        }
+
+        document.getElementById('director-cancel').addEventListener('click', resetDirectorForm)
+        document.getElementById('movie-cancel').addEventListener('click', resetMovieForm)
+
+        reload()
+    </script>
+</body>
+</html>
